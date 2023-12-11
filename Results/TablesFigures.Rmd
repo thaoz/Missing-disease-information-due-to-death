@@ -1,0 +1,582 @@
+---
+title: "Results"
+author: "Thao Le"
+date: "2023-02-20"
+output:
+  html_document:
+    keep_md: no
+editor_options: 
+  chunk_output_type: inline
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, fig.width = 12.5, fig.height = 8,
+                      dev = c("png","pdf","tiff"),
+                      dpi = 300)
+```
+
+```{r}
+library(tidyverse)
+library(survival)
+library(gt)
+library(flextable)
+library(glue)
+library(broom)
+library(gtsummary)
+library(here)
+library(wesanderson)
+library(patchwork)
+library(RColorBrewer)
+library(ggh4x)
+
+
+# color and shape
+# mycolor = c("#e41a1c", "#377eb8", "#4daf4a")
+mycolor = wes_palette("Darjeeling1")[c(2,3,1)]
+mycolor4 = c("#e41a1c", "#377eb8", "#4daf4a", "#984ea3")
+# mycolor4 = c("#4daf4a", "#377eb8", "#e41a1c", "#984ea3")
+
+myshape = c("–","o","+")
+mypalette <- brewer.pal(n = 3, name = "YlOrRd")
+
+# plot theme
+old <- theme_set(theme_bw())
+theme_update(axis.text.x = element_text(size = 12),
+             axis.text.y = element_text(size = 12),
+             strip.text.x = element_text(size = 12, colour = "darkblue"), 
+             strip.text.y = element_text(size = 12, colour = "darkblue"),
+             axis.title.y = element_text(size = 12),
+             legend.text=element_text(size = 12))
+# labels
+interlength.labs <- c("High frequency", "Low frequency")
+names(interlength.labs) <- c("0.5","1")
+
+beta12.labs <- c("beta12 = -0.5", "beta12 = 0", "beta12 = 0.5")
+names(beta12.labs) <- c("-0.5","0","0.5")
+
+trans.labs <- c("Transition: 01","Transition: 02","Transition: 12")
+names(trans.labs) <- c("01", "02", "12")
+
+# load data
+load("Interdata/2023-02-20_Bias-Results.Rdata") # constant 0.5, scale = 0.5
+load("Interdata/2023-02-20_Nevents-Results.Rdata")
+load("Interdata/2023-02-20_Simulation-Senarios.Rdata")
+```
+
+# Figure: true baseline hazards
+
+```{r baselinefunction}
+wfunc <- function(shape01, scale01 = 0.1, stime){shape01*scale01*stime^(shape01-1)}
+stime = seq(from = 0, to = 5, length.out = 100)
+baseline.alpha <- data.frame(time = stime,
+                             alpha = c(rep(wfunc(shape01 = 1,scale01 = 0.1, stime = stime), each = 3),
+                                       wfunc(shape01 = 1.5,scale01 = 0.1, stime = stime), 
+                                       wfunc(shape01 = 1.2,scale01 = 0.1, stime = stime),
+                                       wfunc(shape01 = 1.2,scale01 = 0.1, stime = stime),
+                                       wfunc(shape01 = 1.5,scale01 = 0.1, stime = stime), 
+                                       wfunc(shape01 = 1.5,scale01 = 0.1, stime = stime),
+                                       wfunc(shape01 = 1.5,scale01 = 0.1, stime = stime)),
+                             trans = c(rep(c("01","02","12"), each = 100),
+                                       rep(c("01","02","12"), each = 100),
+                                       rep(c("01","02","12"), each = 100)),
+                             scen = rep(c("Low mortality","Moderate mortality","High mortality"), each = 300)
+                             )
+baseline.alpha$scen <- factor(baseline.alpha$scen, levels = c("Low mortality",
+                                                              "Moderate mortality",
+                                                              "High mortality"))
+baseline.alpha %>% 
+  ggplot(aes(time, alpha)) +
+  geom_line() +
+  facet_grid(scen ~ trans, 
+             labeller = labeller(trans = trans.labs)) +
+  labs(y = "Intensities",
+       x = "Time")
+```
+
+
+```{r data}
+# Calculate bias
+## leave the cases shape12>shape02 out for now
+bias.d <- all.bias %>% 
+  # filter(false.positive.rate == 0) %>% 
+  filter(shape12 == shape02) %>% 
+  mutate(Scenarios = case_when(shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 1,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 2,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 3,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 4,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 5,
+                               
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 6,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 7,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 8,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 9,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 10,
+                               
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 11,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 12,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 13,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 14,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 15
+  ),
+  Scenarios_text = case_when(Scenarios %in% 1:5 ~ "Low mortality rates",
+                             Scenarios %in% 6:10 ~ "Moderate mortality rates",
+                             Scenarios %in% 10:15 ~ "High mortality rates"),
+  Scenarios_text = factor(Scenarios_text, levels = c("Low mortality rates",
+                                                     "Moderate mortality rates",
+                                                     "High mortality rates")),
+  Model = factor(Model, 
+                 levels = c("true.w",
+                            "W.lastvist",
+                            "W.lastnegvisit",
+                            "W.last2visit",
+                            "W.deathtime",
+                            "ic.lastvisit",
+                            "ic.lastnegvisit",
+                            "ic.last2visit",
+                            "ic.deathtime",
+                            "idm.lastvist",
+                            "idm.lastnegvisit",
+                            "idm.last2visit"),
+                 labels = c("true",
+                            "mp.LV",
+                            "mp.LNV",
+                            "mp.SLV",
+                            "mp.D",
+                            "ic.LV",
+                            "ic.LNV",
+                            "ic.SLV",
+                            "ic.D",
+                            "idm.LV",
+                            "idm.LNV",
+                            "idm.SLV"
+                 ))
+  ) %>% 
+  filter(!is.na(Scenarios)) %>%
+  filter(Model!= "true") %>% 
+  ungroup()
+```
+
+# Fig: Number of events
+
+```{r noEvents}
+plot.d <- all.events %>% 
+  mutate(Scenarios = case_when(shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 1,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 2,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 3,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 4,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 5,
+                               
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 6,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 7,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 8,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 9,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 10,
+                               
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 11,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 12,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 13,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 14,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 15
+  ),
+   Scenarios_text = case_when(Scenarios %in% 1:5 ~ "Low mortality rates",
+                             Scenarios %in% 6:10 ~ "Moderate mortality rates",
+                             Scenarios %in% 10:15 ~ "High mortality rates"),
+  Scenarios_text = factor(Scenarios_text, levels = c("Low mortality rates",
+                                                     "Moderate mortality rates",
+                                                     "High mortality rates"))) %>% 
+  filter(!is.na(Scenarios)) %>% 
+  pivot_longer(cols = c(n.persist, n.death.obs),
+               names_to = "eventype")
+
+# beta label
+plot.d$Facet_beta02 = paste('beta["02"]*\"=', plot.d$beta02, "\"")
+plot.d$Facet_beta12 = paste('beta[12]*\"=', plot.d$beta12, "\"")
+plot.d %>% 
+  ggplot(aes(as.factor(Scenarios), value, fill = eventype)) +
+  geom_boxplot() +
+  facet_grid2(inspectLength ~ Scenarios_text + Facet_beta02 + Facet_beta12,
+              strip = strip_nested(),
+              scales = "free_x", 
+              labeller = labeller(inspectLength = interlength.labs,
+                                  Facet_beta02 = label_parsed,
+                                  Facet_beta12 = label_parsed),
+) +
+  theme(legend.position = "top") +
+  labs(y = "Number of events",
+       x = "Scenarios") +
+  scale_fill_manual(name = "",
+                    values = mycolor,
+                    labels = c("Observed death",
+                               "Observed disease")) 
+```
+
+# Fig: average bias
+
+```{r avgBias}
+plot.d <- bias.d %>% 
+   mutate(Model.type = case_when(grepl("mp.", Model) ~ "Competing risk, midpoint",
+                                grepl("ic.", Model) ~ "Competing risk, IC",
+                                grepl("idm.", Model) ~ "Illness death model"),
+         censor.type = gsub(pattern = ".*\\.", replacement = "", x = Model),
+         Scenarios = factor(Scenarios, levels = c(1,6,11,
+                                                  3,8,13,
+                                                  2,7,12,
+                                                  4,9,14,
+                                                  5,10,15)))
+# beta label
+plot.d$Facet_beta02 = paste('beta["02"]*\"=', plot.d$beta02, "\"")
+plot.d$Facet_beta12 = paste('beta[12]*\"=', plot.d$beta12, "\"")
+
+plot.d %>%
+  filter(false.positive.rate == 0) %>%
+  ggplot(aes(Scenarios, mean.bias)) +
+  # geom_line(aes(group = Model,
+  #               col = as.factor(censor.type))) +
+  geom_point(aes(col = as.factor(censor.type),
+                 shape = Scenarios_text),
+             size = 2) +
+  scale_color_manual(name = "Censor type",
+                     values = mycolor4
+  ) +
+  scale_shape_manual(name = "Scenario",
+                     values = c(17,15,16)) +
+  theme(legend.position = "top", ) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  facet_grid2(inspectLength ~ Model.type + Facet_beta02 + Facet_beta12,
+              scales = "free",
+              space = "free_y",
+              switch = "y",
+              strip = strip_nested(),
+              labeller = labeller(inspectLength = interlength.labs,
+                                  Facet_beta02 = label_parsed,
+                                  Facet_beta12 = label_parsed)
+          ) + 
+  labs(y = "Estimated bias") +
+  geom_line(aes(group = Model,
+                col = as.factor(censor.type)),
+            # alpha = 0.8,
+            linetype = "dotted") 
+```
+
+# Fig: coverage
+
+```{r coverage}
+plot.d %>% 
+  filter(false.positive.rate == 0) %>%
+  ggplot(aes(Scenarios, mean.coverage)) +
+  geom_line(aes(group = Model,
+                col = as.factor(censor.type)),
+            linetype = "dotted") +
+  geom_point(aes(col = as.factor(censor.type),
+                 shape = Scenarios_text),
+             size = 2) +
+  scale_color_manual(name = "Censor type",
+                     values = mycolor4
+  ) +
+  scale_shape_manual(name = "Scenario",
+                     values = c(17,15,16)) +
+  theme(legend.position = "top", ) +
+  # scale_x_continuous(breaks = c(1:15)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", alpha = 0.5) +
+  facet_grid2(inspectLength ~ Model.type + Facet_beta02 + Facet_beta12,
+              scales = "free",
+              space = "free_y",
+              switch = "y",
+              strip = strip_nested(),
+              labeller = labeller(inspectLength = interlength.labs,
+                                  Facet_beta02 = label_parsed,
+                                  Facet_beta12 = label_parsed)
+          )  +
+  labs(y = "Coverage")
+
+```
+
+# Fig: average bias and confidence interval
+
+```{r avgBiasCI}
+p1 <- bias.d %>% 
+  filter(false.positive.rate == 0) %>% 
+  filter(inspectLength == 0.5) %>% 
+  select( Model, mean.bias, upper.ci, lower.ci, Scenarios, Scenarios_text) %>% 
+  ggplot(aes(y=Model, x=mean.bias, xmin=lower.ci, xmax=upper.ci)) +
+  geom_pointrange(size = 0.1) +
+  ylab("Model") +
+  xlab("Estimated bias") +
+  facet_wrap( ~ Scenarios , 
+             ncol = 5) +
+  # facet_grid(Scenarios_text ~ Scenarios, scales = "free_y") +
+  geom_vline(xintercept = 0, 
+             color = "grey",
+             linetype = "dashed")
+
+# plot for low visit frequency
+p2 <- bias.d %>% 
+  filter(false.positive.rate == 0) %>% 
+  filter(inspectLength == 1) %>% 
+  select( Model, mean.bias, upper.ci, lower.ci, Scenarios, Scenarios_text) %>% 
+  ggplot(aes(y=Model, x=mean.bias, xmin=lower.ci, xmax=upper.ci)) +
+  geom_pointrange(size = 0.1) +
+  ylab("Model") +
+  xlab("Estimated bias") +
+  facet_wrap( ~ Scenarios , 
+             ncol = 5) +
+  # facet_grid(Scenarios_text ~ Scenarios, scales = "free_y") +
+  geom_vline(xintercept = 0, 
+             color = "grey",
+             linetype = "dashed")
+
+p1 + labs(title = "A) High frequency visit") 
+p2 + labs(title = "B) Low frequency visit") 
+```
+
+# Fig: average bias in the presence of false positive tests
+
+```{r avgBiasIDMFaslePositive}
+plot.d %>% 
+  filter(grepl("idm", Model)) %>% 
+  ggplot(aes(Scenarios, mean.bias)) +
+  geom_line(aes(group = as.factor(false.positive.rate),
+                col = as.factor(false.positive.rate)),
+            linetype = "dotted") +
+  geom_point(aes(col = as.factor(false.positive.rate)),
+             size = 2) +
+  scale_color_manual(name = "False positive rate",
+                     values = mycolor4
+  ) +
+  scale_shape_manual(name = "Scenario",
+                     values = c(17,15,16,1)) +
+  theme(legend.position = "top", ) +
+  # scale_x_continuous(breaks = c(1:15)) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  facet_grid2(inspectLength ~ Model + Facet_beta02 + Facet_beta12,
+              scales = "free",
+              space = "free_y",
+              switch = "y",
+              strip = strip_nested(),
+              labeller = labeller(inspectLength = interlength.labs,
+                                  Facet_beta02 = label_parsed,
+                                  Facet_beta12 = label_parsed)
+  )  +
+  labs(y = "Estimated bias")
+```
+
+
+# Fig: Amount of false positive test
+
+```{r AmountFP}
+load("./Interdata/2023-02-20_simresults-Fasel-Positive-Rate.Rdata")
+
+# combine
+events.all <- events %>% 
+  mutate(scenario = as.numeric(scenario)) %>% 
+  left_join(scenarios %>% mutate(scenario = row_number())) %>% 
+  filter(shape12 == shape02) %>% 
+  mutate(Scenarios = case_when(shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 1,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 2,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 3,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 4,
+                               shape01 == 1 & shape02 == 1 & shape12 == 1 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 5,
+                               
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 6,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 7,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 8,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 9,
+                               shape01 == 1.5 & shape02 == 1.2 & shape12 == 1.2 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 10,
+                               
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == 0 ~ 11,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == 0.5 ~ 12,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0 ~ 13,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0.5 & beta12 == 0.5 ~ 14,
+                               shape01 == 1.5 & shape02 == 1.5 & shape12 == 1.5 & beta01 == 0.5 & beta02 == 0 & beta12 == -0.5 ~ 15
+  ),
+  Scenarios_text = case_when(Scenarios %in% 1:5 ~ "Low mortality rates",
+                             Scenarios %in% 6:10 ~ "Moderate mortality rates",
+                             Scenarios %in% 10:15 ~ "High mortality rates"),
+  Scenarios_text = factor(Scenarios_text, levels = c("Low mortality rates",
+                                                     "Moderate mortality rates",
+                                                     "High mortality rates")))
+tmp <- events.all %>% 
+  mutate(
+    pct1 = n.event.incorrect.time/n.event*100,
+    pct2 = n.event.would.not.obverve/n.event*100,
+    Scenarios = factor(Scenarios, levels = c(1,6,11,
+                                             3,8,13,
+                                             2,7,12,
+                                             4,9,14,
+                                             5,10,15))
+  ) %>% 
+  select(Scenarios_text, Scenarios, inspectLength, contains("pct"), beta12, beta02) %>% 
+  pivot_longer(cols = c(pct1, pct2), names_to = "pct") %>% 
+  mutate(pct = factor(pct, levels = c("pct1", "pct2"),
+                         label = c("Incorrect event time", "Additional events")))
+tmp %>% 
+  group_by(inspectLength, Scenarios_text ,pct) %>% 
+  summarise(m = mean(value))
+
+tmp$Facet_beta02 = paste('beta["02"]*\"=', tmp$beta02, "\"")
+tmp$Facet_beta12 = paste('beta[12]*\"=', tmp$beta12, "\"")
+tmp %>% 
+  ggplot(aes(Scenarios, value)) +
+  geom_boxplot(aes(color = Scenarios_text,
+                   fill = as.factor(pct)
+                   )) +
+  theme(legend.position = "top") +
+  labs(y = "Percentage",
+       x = "Scenarios") +
+  scale_fill_manual(name = "",
+                    values = c("white", "grey")) +
+  scale_color_manual(name = "",
+                    values = mycolor4) +
+   facet_grid2(inspectLength ~ Facet_beta02 + Facet_beta12,
+              scales = "free",
+              space = "free_y",
+              switch = "y",
+              strip = strip_nested(),
+              labeller = labeller(inspectLength = interlength.labs,
+                                  Facet_beta02 = label_parsed,
+                                  Facet_beta12 = label_parsed)
+  ) 
+
+
+```
+
+
+# Table: Failed simulation
+
+```{r}
+bias.d %>% 
+ filter(false.positive.rate == 0) %>% 
+  filter(Model == "idm.SLV") %>% 
+  mutate(npct = style_percent((1000 - n.sim)/1000)) %>% 
+  select(npct, Scenarios, inspectLength) %>%
+  arrange(Scenarios) %>%
+  pivot_wider(names_from = "inspectLength", 
+              values_from = npct, names_glue = "visitlength_{inspectLength}") %>% 
+  flextable() %>% 
+  set_header_labels(values = list(visitlength_0.5 = "High frequency",
+                                  visitlength_1 = "Low frequency")) %>% 
+  autofit() %>% align(align = "center", part = "all")  %>% 
+  set_caption("Failed simulation (percentage) for the idm.SLV model")
+```
+
+# Table: ASPREE data,  Number of events
+
+This table requires aspree data to populate
+
+```{r, eval = FALSE}
+library(gtsummary)
+all.d %>% 
+  ungroup() %>% 
+  select(event, obs.d, Diab_deriv) %>% 
+  mutate(death.without.pd = obs.d == 1 & event == 0,
+         death.with.pd = obs.d == 1 & event == 1,
+         pd.without.death = obs.d == 0 & event == 1) %>% 
+  tbl_summary(by = Diab_deriv) %>% 
+  add_overall()
+```
+
+# Table: regression coeficient of aspree data
+
+```{r, aspree-result, fig.width=8, fig.height=7}
+load(("./Interdata/2023-01-18_aspree-idm.Rdata"))
+
+
+# extract HR for cox models
+coxmodels <- bind_rows(lapply(list(censordead, lastvisit, lasttest, lastsecondvisit,
+                             censordead.mp, lastvisit.mp, lasttest.mp, lastsecondvisit.mp), 
+                        function(x) tidy(x, 
+                                         exponentiate = TRUE, 
+                                         conf.int = TRUE))) %>% 
+  mutate(model = c("fd.D","fd.LV","fd.LNV","fd.SLV",
+                   "mp.D","mp.LV","mp.LNV","mp.SLV"),
+         beta = style_number(log(estimate), 2),
+         estimate = style_number(estimate, 2),
+         "95% CI" = glue("{style_number(conf.low, 2)}; {style_number(conf.high,2)}")) %>% 
+  select(model, beta, estimate, "95% CI", conf.low, conf.high) %>% 
+  rename("HR" = "estimate")
+
+# extract HR for IC models
+icmodels <- bind_rows(lapply(list(ic.death, ic.lastvisit, ic.lastnegvisit, ic.last2visit), function(x){
+  data.frame(beta = coef(x),
+             conf.low = exp(confint(x)[1]),
+             conf.high = exp(confint(x)[2]))
+})) %>% 
+  mutate(model = c("ic.D","ic.LV","ic.LNV","ic.SLV"),
+         HR = style_number(exp(beta), 2),
+         # HR = exp(beta),
+         beta = style_number(beta, 2),
+         "95% CI" = glue("{style_number(exp(conf.low), 2)}; {style_number(exp(conf.high),2)}")) %>% 
+  select(model, beta, HR, "95% CI", conf.low, conf.high) 
+rownames(icmodels) <- NULL
+
+# extract HR for idm model
+extract.idm.HR <- function(idmfit, transition = 1){
+  data.frame(beta = style_number(idmfit$coef[transition],2),
+             HR = style_number(idmfit$HR[transition],2),
+             # HR = idmfit$HR[transition],
+             conf.low = exp(idmfit$coef[transition] - qnorm(0.975)*idmfit$se[transition]),
+             conf.high = exp(idmfit$coef[transition] + qnorm(0.975)*idmfit$se[transition]))
+}
+
+# idm.fit and idmfit.LSecV are the same
+idms <- bind_rows(lapply(list(idmfit.LV, idmfit.LNegV, idmfit.LSecV), function(x) extract.idm.HR(x))) %>% 
+  mutate(model = c("idm.LV", "idm.LNV", "idm.SLV"))
+rownames(idms) <- NULL
+idms <- idms %>% 
+  mutate( "95% CI" = glue("{style_number(conf.low, 2)}; {style_number(conf.high,2)}"))
+
+# coefficient from other transition
+idms1 <- bind_rows(lapply(list(idmfit.LV,idmfit.LNegV,idmfit.LSecV), function(x) extract.idm.HR(x, transition = 2))) %>% 
+  mutate(model = c("idm.LV", "idm.LNV", "idm.SLV"))
+rownames(idms1) <- NULL
+idms1 <- idms1 %>% 
+  mutate( "95% CI" = glue("{style_number(conf.low, 2)}; {style_number(conf.high,2)}"))
+
+idms2 <- bind_rows(lapply(list(idmfit.LV,idmfit.LNegV,idmfit.LSecV), function(x) extract.idm.HR(x, transition = 3))) %>% 
+  mutate(model = c("idm.LV", "idm.LNV", "idm.SLV"))
+rownames(idms2) <- NULL
+idms2 <- idms2 %>% 
+   mutate( "95% CI" = glue("{style_number(conf.low, 2)}; {style_number(conf.high,2)}"))
+
+
+# Table 
+coef.tab <- rbind(subset(coxmodels, select = c("model","beta", "HR", "95% CI")),
+                  subset(icmodels, select = c("model", "beta","HR", "95% CI")),
+                  subset(idms, select = c("model", "beta","HR", "95% CI")))
+coef.tab1 <- rbind(subset(idms1, select = c("model","beta", "HR", "95% CI")),
+                  subset(idms2, select = c("model", "beta","HR", "95% CI")))
+
+```
+
+Wide table format
+
+```{r}
+# try long table
+coef.d <- rbind(coef.tab, coef.tab1) 
+aspreetab <- rbind(coef.tab, coef.tab1) %>% 
+  mutate(trans = rep(c("01","02","12"), c(15,3,3))) %>% 
+  pivot_wider(names_from = trans, values_from = c(beta, HR, "95% CI")) %>% 
+  gt() %>% 
+   tab_spanner(label = md("Transition 0 -> 1"), 
+              columns = c(contains("01"))) %>% 
+  tab_spanner(label = md("Transition 0 -> 2"), 
+              columns = c(contains("02"))) %>% 
+  tab_spanner(label = md("Transition 1 -> 2"), 
+              columns = c(contains("12"))) %>% 
+  sub_missing(
+  columns = everything(),
+  rows = everything(),
+  missing_text = "---"
+) %>% 
+  cols_label(beta_01 = "beta",
+             beta_02 = "beta",
+             beta_12 = "beta",
+             HR_01 = "HR",
+             HR_02 = "HR",
+             HR_12 = "HR",
+             "95% CI_01" = "95% CI",
+             "95% CI_02" = "95% CI",
+             "95% CI_12" = "95% CI") 
+  # basic_theme()
+aspreetab 
+```
+
