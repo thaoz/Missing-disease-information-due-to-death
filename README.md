@@ -1,7 +1,7 @@
 # Missing-disease-information-due-to-death
 This repository contains the code for the paper entitled: *Handling missing disease information due to death in diseases that need two visits to diagnose* by Le Thi Phuong Thao, Rory Wolfe, Stephane Heritier, and Ronald Geskus.
 
-The author mainly responsible for writing the code and whom readers should approach with questions or bug reports is [\textcolor{blue}{Le Thi Phuong Thao}](mailto:thao.le@monash.edu).
+The author mainly responsible for writing the code and whom readers should approach with questions or bug reports is [Le Thi Phuong Thao](mailto:thao.le@monash.edu).
 
 The folder `simulation` has the following contents:
 
