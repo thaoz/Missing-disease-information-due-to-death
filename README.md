@@ -1,10 +1,10 @@
 # Handling missing disease information due to death in diseases that need two visits to diagnose
-This repository contains the code for the paper entitled: *Handling missing disease information due to death in diseases that need two visits to diagnose* by Le Thi Phuong Thao, Rory Wolfe, Stephane Heritier, and Ronald Geskus, submitted to the Statistics in Medicine Journal. 
+This repository contains the code for the paper entitled: **Handling missing disease information due to death in diseases that need two visits to diagnose** by Le Thi Phuong Thao, Rory Wolfe, Stephane Heritier, and Ronald Geskus, submitted to the Statistics in Medicine journal. 
 
 The author mainly responsible for writing the code and whom readers should approach with questions or bug reports is [Le Thi Phuong Thao](mailto:thao.le@monash.edu).
 The repo contains the coding scripts and results from the simulation study described in the paper as follows:
 
-The folder `simulation` has the following contents:
+The folder `Simulation` has the following contents:
 
 -   `01_Functions.R`: supporting functions for the simulation
 -   `02_RunFuns.R`: functions to run simulations
@@ -15,7 +15,7 @@ The folder `simulation` has the following contents:
     -   Estimated bias, and 95% confidence interval
     -   Coverage
 
-The folder `case_study` has the following contents:
+The folder `Case study` has the following contents:
 
 -   `DataApplication.R`: This R script does the following task:
     -   Derive the ready to work data set from the ASPREE data. Note that data can be obtained via the AMS system of ASPREE (<https://ams.aspree.org/public/>)
