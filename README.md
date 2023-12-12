@@ -26,7 +26,7 @@ The folder `Interdata` contains the corresponding R work-spaces with the simulat
 
 -   `2023-02-17_simresults-All-Length05.Rdata`: Output of `03_RunSim_Bias_len05.R`
 
--   `2023-02-17_simresults-All-Length05.Rdata`: Output of `03_RunSim_Bias_len10.R`
+-   `2023-02-17_simresults-All-Length10.Rdata`: Output of `03_RunSim_Bias_len10.R`
 
 -   `2023-02-20_simresults-Fasel-Positive-Rate.Rdata`: Output of `03_RunSim_Bias_Nevent.R`
 
